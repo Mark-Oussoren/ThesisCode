@@ -1,17 +1,16 @@
 import numpy as np
-from keras.models import Sequential
-from keras.models import clone_model
-# Sort this out...
-from keras.layers import Dense, Softmax, Dot, Add, Input, Lambda, Layer, concatenate, Dropout, Reshape, Flatten
-from keras.initializers import RandomNormal
-
-#from keras import Input
-from keras import Model
-from keras.optimizers import Adam 
-from collections import deque
+import tensorflow as tf
+import tensorflow.keras.backend as K
 import random
-import keras.backend as K
 import copy
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.models import clone_model
+from tensorflow.keras.layers import Dense, Softmax, Dot, Add, Input, Lambda, Layer, concatenate, Dropout, Reshape, Flatten
+from tensorflow.keras.initializers import RandomNormal
+from tensorflow.keras import Model
+from tensorflow.keras.optimizers import Adam
+from collections import deque
+from os import path
 
 
 if __name__ == "__main__":
@@ -20,42 +19,31 @@ if __name__ == "__main__":
 else:
 	from library.agents.baseAgents import learningAgent, replayMemory
 	DEBUG = False
-
-# TEMPORARY, Copied and pasted from https://stackoverflow.com/questions/47840527/using-tensorflow-huber-loss-in-keras
-# Not required if not running on the cluster
-# Instead replace with 
-# from keras.losses import huber_loss
-from os import path
 local = path.exists("data")
 if local:
 	print("Running locally")
-
 if not local:
 	def huber_loss(y_true, y_pred, clip_delta=1.0):
 	  error = y_true - y_pred
 	  cond  = K.abs(error) < clip_delta
-
 	  squared_loss = 0.5 * K.square(error)
 	  linear_loss  = clip_delta * (K.abs(error) - 0.5 * clip_delta)
-
-	  return K.tf.where(cond, squared_loss, linear_loss)
+	  return tf.where(cond, squared_loss, linear_loss)
 else:
 	from keras.losses import huber_loss
 
 class distAgent(learningAgent):
-	def __init__(self, state_size, action_values, agent_name,C, alternative_target,UCB=False,UCBc = 1,tree_horizon = 3,n_hist_data=0,n_hist_inputs=0,orderbook = False):
+	def __init__(self, state_size, action_values, agent_name, C, alternative_target, UCB=False, UCBc=1, tree_horizon=3, n_hist_data=0, n_hist_inputs=0, orderbook=True):
 		self.action_size = len(action_values)
 		self.action_values = action_values
-		super(distAgent,self).__init__(state_size, self.action_size, agent_name,C, alternative_target,"dist",tree_horizon,n_hist_data=n_hist_data,n_hist_inputs=n_hist_inputs,orderbook=orderbook)
+		super(distAgent,self).__init__(state_size, self.action_size, agent_name, C, alternative_target, "dist", tree_horizon, n_hist_data=n_hist_data, n_hist_inputs=n_hist_inputs, orderbook=orderbook)
 		self.UCB = UCB
 		self.c = UCBc
 		self.geometric_decay = True
 		self.action_as_input = True
-
 		# Transformations
 		self.trans_a = 2 / (np.amax(self.action_values) - np.amin(self.action_values))
 		self.trans_b = -self.trans_a * np.amin(self.action_values) - 1
-
 		if self.UCB:
 			self.t = 1
 			self.epsilon_greedy = False
@@ -107,10 +95,11 @@ class distAgent(learningAgent):
 			action = np.array(self.action_values[action_index]) * self.trans_a + self.trans_b
 		if self.n_hist_data > 0:
 			# Two state inputs
-			res[0] = np.reshape(np.concatenate((np.array(state[0][0]),action),axis=None), [1, len(state[0][0]) + self.action_space_size])
+			print(state[0])
+			res[0] = np.reshape(np.concatenate((np.array(state[0][0]), action), axis=None), [1, len(state[0][0]) + self.action_space_size])
 		else:
 			# One state input
-			res = np.reshape(np.concatenate((np.array(state[0]),action),axis=None), [1, len(state[0]) + self.action_space_size])
+			res = np.reshape(np.concatenate((np.array(state[0]), action), axis=None), [1, len(state[0]) + self.action_space_size])
 		
 		return res
 
@@ -120,10 +109,9 @@ class distAgent(learningAgent):
 
 class C51Agent(distAgent):
 
-	def __init__(self,state_size, action_values, agent_name,N=51,C = 0,alternative_target = False,UCB = False,UCBc = 1,tree_horizon = 3,n_hist_data=0,n_hist_inputs=0):
+	def __init__(self, state_size, action_values, agent_name, N=51, C=0, alternative_target=False, UCB=False, UCBc=1, tree_horizon=3, n_hist_data=0, n_hist_inputs=0):
 		self.V_max = 0.05
 		self.V_min = -0.1
-
 		self.N = N # This could be dynamic depending on state?
 		# This granularity is problematic - can we do this without discretisation?
 		# Especially if V_min and V_max are not dynamic
@@ -287,23 +275,16 @@ class IQNNetwork(Model):
 		self.main_hidden2 = Dense(30, activation='relu')
 		self.outputs = Dense(self.N, activation='linear')
 		self.kappa = 2
-		
-		
-
 		# State processing model
 		state_input  = Input(shape=(self.state_size,))
 		state_hidden1 = Dense(8, activation='relu')(state_input)
 		self.process_state = Dense(self.state_model_size_out, activation='relu')(state_hidden1)
-		
 		self.phi = Dense(self.state_model_size_out, activation='relu')
-		
 		#state_hidden1 = Dense(8, activation='relu')(state_in)
 		#state_hidden2 = Dense(self.state_model_size_out, activation='relu')(state_hidden1)
 
 
-
 	def call(self,inputs):
-		
 		state_action,quantiles_selected = inputs
 		embedded_quantiles = np.cos(np.dot(embedded_range, self.quantiles) * np.pi)
 		embedded_quantiles.shape = (self.N,1)
@@ -343,7 +324,7 @@ class CosineBasisLayer(Layer):
 '''
 
 class QRAgent(distAgent):
-	def __init__(self,state_size, action_values, agent_name,C,N=31, alternative_target = False,UCB=False,UCBc = 1,tree_horizon = 3,n_hist_data=0,n_hist_inputs=0,orderbook=False):
+	def __init__(self, state_size, action_values, agent_name, C, N=31, alternative_target=False, UCB=False, UCBc=1, tree_horizon = 3, n_hist_data=0, n_hist_inputs=0, orderbook=False):
 		self.N = N
 		self.N_p = 8
 		self.embedding_dim = 3
@@ -352,7 +333,6 @@ class QRAgent(distAgent):
 		self.smart_scaling = True
 		self.expected_range = 0.005
 		self.expected_mean = 0.9971
-
 		self.model_layers = 3 #random.randint(2,16) # Temp
 		self.model_units = 28 #random.randint(8,35) #Temp
 		#self.kappa = 2 # What should this be? Moved to loss fun
@@ -363,22 +343,22 @@ class QRAgent(distAgent):
 		# Temporarily uniformly parition [0,1] for the quantiles
 		self.quantiles = np.arange(1,self.N + 1) / (self.N+1) # np.random.rand(self.N) This should be a random partition of [0,1]
 		#print(self.quantiles)
-		self.qi = 1 / (self.N)#self.quantiles[1] - self.quantiles[0] # WARNING: SHOULD BE DYNAMIC
+		self.qi = 1 / (self.N) #self.quantiles[1] - self.quantiles[0] # WARNING: SHOULD BE DYNAMIC
 		self.quantiles.shape = (1,len(self.quantiles))
 		#self.embedded_quantiles = np.cos(np.dot(self.embedded_range, self.quantiles) * np.pi)
 		#self.embedded_quantiles.shape = (1,self.embedding_dim,self.N)
 		self.kappa = 1
 		self.optimisticUCB = False
-		super(QRAgent,self).__init__(state_size, action_values, agent_name,C, alternative_target,UCB,UCBc,tree_horizon,n_hist_data=n_hist_data,n_hist_inputs=n_hist_inputs,orderbook=orderbook)
+		super(QRAgent,self).__init__(state_size, action_values, agent_name, C, alternative_target, UCB, UCBc, tree_horizon, n_hist_data=n_hist_data, n_hist_inputs=n_hist_inputs, orderbook=orderbook)
 		
 	# https://stackoverflow.com/questions/55445712/custom-loss-function-in-keras-based-on-the-input-data
 	@staticmethod
-	def huber_loss_quantile(tau,kappa):
-		#kappa = 2
-		def loss(yTrue,yPred):
-			bellman_errors =   yTrue - yPred
-			#tau = np.array(quantile_in)
-			#print("loss",(K.abs(tau - K.cast(bellman_errors < 0,"float32")) * huber_loss(yTrue,yPred)) / kappa)
+	def huber_loss_quantile(tau, kappa):
+		def loss(yTrue, yPred):
+			quantile_in = np.random.random()
+			bellman_errors = yTrue - yPred
+			tau = np.array(quantile_in)
+			print("loss",(K.abs(tau - K.cast(bellman_errors < 0,"float32")) * huber_loss(yTrue,yPred)) / kappa)
 			if kappa > 0:
 				return (K.abs(tau - K.cast(bellman_errors < 0,"float32")) * huber_loss(yTrue,yPred)) / kappa
 			return (K.abs(tau - K.cast(bellman_errors < 0,"float32")) * bellman_errors)
@@ -398,10 +378,10 @@ class QRAgent(distAgent):
 			else:
 				hist_model = self.hist_model
 	
-			# Trial multiplying rather than concatenating layers to force interation
-			if self.multiply_layers:
+ 
+ 			if self.multiply_layers:
 				hist_out = hist_model.output
-				input_layer = Dot(axes=(2,2))([state_in_r,hist_out])
+				input_layer = Dot(axes=(2, 2))([state_in_r,hist_out])
 				input_layer = Flatten()(input_layer)
 			else:
 				input_layer = concatenate([state_in,hist_model.output])
@@ -426,16 +406,13 @@ class QRAgent(distAgent):
 			all_inputs = state_in
 		
 		model = Model(inputs=all_inputs, outputs=outputs)
-		
-
 		model.compile(loss = self.huber_loss_quantile(self.quantiles,self.kappa),
 						optimizer=Adam(lr=self.learning_rate,epsilon = 0.01/32))
-
 		return model
 
-	def predict_action(self,state,action_index,target = False,above_med = False):
-		state_action = self._process_state_action(state,action_index)
-		predict = self.predict_quantiles(state_action,target)
+	def predict_action(self, state,action_index, target=False, above_med=False):
+		state_action = self._process_state_action(state, action_index)
+		predict = self.predict_quantiles(state_action, target)
 		
 		#if self.C > 0 and target:
 			#assert not above_med, "Why is variance being used with target?"
@@ -470,10 +447,9 @@ class QRAgent(distAgent):
 		return 0,1
 
 	# This function needs to be rolled into predict_action
-	def predict_quantiles(self,state_action,target = False):
+	def predict_quantiles(self, state_action, target = False):
 		#state_action = self._process_state_action(state,action_index)
 		result_scaling_mean, result_scaling_range = self._reward_scaling(state_action)
-		
 		if DEBUG:
 			print("predict state action", state_action)
 		#print("predict state action", state_action)
@@ -486,7 +462,7 @@ class QRAgent(distAgent):
 
 
 	# predict function could be moved to distAgent and transitioned to np
-	def predict(self,state,target = False):
+	def predict(self, state, target = False):
 		res = []
 		for i in range(self.action_size):
 			res.append(self.predict_action(state,i,target = target))
@@ -495,7 +471,7 @@ class QRAgent(distAgent):
 		res.shape = (1,len(res))
 		return res
 
-	def project(self,reward,next_state,done,horizon,mem_index):
+	def project(self, reward, next_state, done, horizon, mem_index):
 		tree_success = False
 		predict = []
 		if not done:
@@ -514,7 +490,7 @@ class QRAgent(distAgent):
 
 		return reward + self.gamma * predict
 
-	def fit(self,state, action_index, reward, next_state, done,mem_index = -1):
+	def fit(self, state, action_index, reward, next_state, done,mem_index = -1):
 		state_action = self._process_state_action(state,action_index)
 		if DEBUG:
 			print("State Action",state_action)
@@ -535,7 +511,7 @@ class QRAgent(distAgent):
 		self.model.fit(state_action, target_f,epochs=1, verbose=0)
 
 
-	def action_variance(self,state,action_index):
+	def action_variance(self, state, action_index):
 		state_action = self._process_state_action(state,action_index)
 		predict = self.predict_quantiles(state_action)[0]
 		if self.optimisticUCB:
@@ -546,7 +522,7 @@ class QRAgent(distAgent):
 			print(f"WARNING: Variance {res} below 0")
 		return max(res,0)
 
-	def variance(self,state):
+	def variance(self, state):
 		res = []
 		#print("00",np.power(self.predict_action(state,0,above_med = self.optimisticUCB),2))
 		for i in range(self.action_size):
@@ -555,9 +531,6 @@ class QRAgent(distAgent):
 
 # Testing the code
 if __name__ == "__main__":
-	pass
-
-	'''
 	myAgent = distAgent(5,"TonyTester",N=5)
 	state = [-0.8,0.8] 
 	state = np.reshape(state, [1, 2])
@@ -626,7 +599,7 @@ if __name__ == "__main__":
 		print("... and the probs:",myAgent.probs(next_state,my_next_action)[0])
 		print("resulting in projTZ ", myAgent.projTZ_nTree(state,0.1,next_state,False,0,1))
 		myAgent.fit(state,2,0.1,next_state,False)
-	'''
+
 
 
 
