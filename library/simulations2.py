@@ -5,28 +5,27 @@ from matplotlib import pyplot as plt
 import random
 import wandb
 import os
-
 from os import path
+
+
 local = path.exists("data")
 if local:
 	print("Running locally")
-
-
 class simulator:
-
-	def __init__(self,market_,agent, params = None, test_name = 'undefined',orderbook = False):
-		
-		# Default params
+	def __init__(self, market_, agent, params=None, test_name=None, orderbook=False):
+		# Default params for testing
 		if params is None:
-			params = params = {"terminal" : 1, "num_trades" : 50, "position" : 10, "batch_size" : 32,"action_values" : [0,0.001,0.005,0.01,0.02,0.05,0.1] }
-			print("Initialising using default parameters")
-
+			params = {"terminal" : 1,
+					  "num_trades" : 50,
+					  "position" : 10,
+					  "batch_size" : 32,
+					  "action_values" : [0,0.001,0.005,0.01,0.02,0.05,0.1]}
+			print(f"Training with default parameters: {params}")
 		self.terminal = params["terminal"]
 		self.num_steps = params["num_trades"]
 		self.batch_size = params["batch_size"]
 		self.agent = agent
 		self.orderbook = orderbook
-
 		self.m = market_
 		self.possible_actions = params["action_values"]
 		if orderbook:
@@ -42,32 +41,22 @@ class simulator:
 								 self.possible_actions
 								)
 		self.trade_freq = self.m.stock.n_steps / self.num_steps
-		
 		# TAG: Depreciate?
 		self.intensive_training = False
-
 		self.test_name = test_name
-
 		if local:
 			print("Using low eval frequency for testing")
-			self.eval_freq = 5 #500
-			self.eval_window = 4 #400
+			self.eval_freq = 10
+			self.eval_window = 10
 		else:
-			self.eval_freq = 500 #500
-			self.eval_window = 400 #400
-
+			self.eval_freq = 10 #500
+			self.eval_window = 10 #400
 		self.train_stat_freq = 100
-		
 		self.episode_n = 0 # Number of training episodes completed
-
-		self.logging_options = set(["count","value","position","event","reward","lo","lotime"])
-		# Try replacing below with logging matplotlib
-		#self.position_granularity = 4
-
-		# Wandb initialise and congigure
-		self.plot_position = False
-		self.new_run = wandb.init(project="OptEx",name = self.agent.agent_name,group = self.test_name,reinit=True)
-		#wandb.save('latest.pth')
+		self.logging_options = set(["count", "value", "position", "event", "reward", "lo", "lotime"])
+		# self.position_granularity = 4
+		self.new_run = wandb.init(project="OptEx", name = self.agent.agent_name,group = self.test_name, reinit=True)
+		# wandb.save('latest.pth')
 		self.new_run.config.update({"num_trades": self.num_steps,
 		 "batch_size": self.batch_size,
 		 "action_size": len(self.possible_actions),
@@ -92,7 +81,6 @@ class simulator:
 			 "n_hist": self.agent.n_hist_data,
 			 "mult_arc": self.agent.multiply_layers
 		 	})
-			
 		if self.agent.agent_type == "dist":
 			self.new_run.config.update({"twap_scaling": self.agent.twap_scaling})
 			if type(agent).__name__ == "C51Agent":
@@ -108,42 +96,43 @@ class simulator:
 		else:
 			self.new_run.config.update({"epsilon_min": self.agent.epsilon_min})
 			self.new_run.config.update({"epsilon_decay": self.agent.epsilon_decay})
-
 		if self.agent.agent_type == "DQN":
 			print("DQN Agent")
-		
+
 
 	def __str__(self):
 		return f"{type(agent).__name__} exiting position {self.env.initial_position} over period of {self.m.stock.n_steps} seconds, changing trading rate every {self.trade_freq} seconds."
+	
+	
 	@staticmethod
 	def _moving_average(a, n=300):
 		ret = np.cumsum(a, dtype=float)
 		ret[n:] = ret[n:] - ret[:-n]
 		return ret[n - 1:] / n
 
+
 	def _pretrain_position(self):
-		t = random.uniform(-1,1)
+		t = random.uniform(-1, 1)
 		a = random.randrange(len(self.possible_actions))
-		state = [-1,t]
-		next_time = max(1,t + 2 / self.num_steps)
-		next_state = [-1,next_time]
+		state = [-1, t]
+		next_time = max(1, t + 2 / self.num_steps)
+		next_state = [-1, next_time]
 		state = np.reshape(state, [1, self.env.state_size])
 		next_state = np.reshape(next_state, [1, self.env.state_size])
 		self.agent.remember(state, a, 0, next_state, True)
 
 	# TAG: overhaul
-	def pretrain(self,n_samples = 2000,n_iterations = 500):
+	def pretrain(self, n_samples=2000, n_iterations=500):
 		raise "This function has not been updated for version 2"
 		pretain_position = True
 		pretrain_time = False
 		for i in range(n_samples):
-			## Pretrain for state where position is 0 ##
-			
+			# Pretrain for state where position is 0 
 			# Randomly sample transformed t in the time interval [-1,1] and action from space
 			if pretain_position:
 				self._pretrain_position()
 
-			## Pretrain for state where time is 0 ##
+			# Pretrain for state where time is 0 
 			if pretrain_time:
 				# Randomly sample transformed position in the time interval [-1,1] and action from space
 				p = random.uniform(-1,1)
@@ -151,29 +140,25 @@ class simulator:
 				state = [p,1]
 				state = np.reshape(state, [1, self.env.state_size])
 				self.agent.remember(state, a, 0, state, True)
-
 		for i in range(n_iterations):
 			self.agent.replay(self.batch_size)
-
 		# Clear the memory
 		self.agent.memory.clear()
 		print("Pretraining Complete")
 
+
 	def _train(self,n_episodes):
 		self.agent.evaluate = False
 		for e in range(n_episodes):
-			if e % self.train_stat_freq == 0:
-				track = self.episode(evaluate = False,record = ["count","value"])
-				for j in range(len(self.possible_actions)):
-					self.new_run.log({'episode': self.episode_n, ('act_count' + str(j)): track["count"].count(j)})
-			else:
-				self.episode(evaluate = False)
+			print(f'Episode: {e}')
+			track = self.episode(evaluate = False,record = ["count","value"])
+			for j in range(len(self.possible_actions)):
+				self.new_run.log({'episode': e, ('act_count ' + str(j)): track["count"].count(j)})
 			# Train agent
 			if not self.intensive_training:
 				if len(self.agent.memory) > self.batch_size:
 					self.agent.replay(self.batch_size) # train the agent by replaying the experiences of the episode
 					self.agent.step() # Update target network if required
-
 			self.episode_n += 1
 
 
@@ -200,29 +185,23 @@ class simulator:
 		self.new_run.log({'episode': self.episode_n, 'eval_rewards': total_reward / n_episodes})
 		if self.orderbook:
 			self.new_run.log({'episode': self.episode_n, 'lo_value': total_lo_value / n_episodes})
-		if self.plot_position:
-			plt.plot(np.arange(self.num_steps) ,np.array(total_position) / (n_episodes * self.env.initial_position))
-			plt.ylabel("Percentage of Position")
-			#print(np.arange(self.num_steps) / self.num_steps,np.array(total_position) / n_episodes)
-			self.new_run.log({'episode': self.episode_n, 'position': plt})
-		else:
-			for j in range(len(total_position)):
-				self.new_run.log({'episode': self.episode_n, ('position' + str(j)): total_position[j] / n_episodes})
-			
-	
-	def train(self,n_episodes = 10000, epsilon = None, epsilon_decay = None,show_details = True, evaluate = False):
-		
-		# Default training parameters if not provided
+		plt.plot(np.arange(self.num_steps) ,np.array(total_position) / (n_episodes * self.env.initial_position))
+		plt.ylabel("Percentage of Position")
+		plt.show()
+		#print(np.arange(self.num_steps) / self.num_steps,np.array(total_position) / n_episodes)
+		self.new_run.log({'episode': self.episode_n, 'position': wandb.Image(plt)})
+		for j in range(len(total_position)):
+			self.new_run.log({'episode': self.episode_n, ('position' + str(j)): total_position[j] / n_episodes})
+
+
+	def train(self,n_episodes = 10, epsilon = None, epsilon_decay = None,show_details = True, evaluate = False):
 		if epsilon is not None:
 			self.agent.epsilon = epsilon
-
 		if epsilon_decay is not None:
 			self.agent.epsilon_decay = epsilon_decay
-
 		# TAG: Deprecate
-		# Setup action list
+		# Set up action list
 		action = -1
-
 		# TAG: Deprecate
 		agent_reward_dists = []
 		initial_episode = self.episode_n
@@ -233,24 +212,23 @@ class simulator:
 				self.agent.model.save_weights(os.path.join(wandb.run.dir, f"qnet_weights_{self.episode_n}"))
 				wandb.save(os.path.join(wandb.run.dir, "qnet_weights_*"))
 				print("Model Saved!")
-		
-	def episode(self, verbose = False,evaluate = False, record = None):
-		recording = record is not None and len(record) > 0
-		if recording:	
-			assert set(record).issubset(self.logging_options), "Undefined recording parameters"
-		
-		state = self.env.reset(training = (not evaluate)) # reset state at start of each new episode of the game
 
+
+	def episode(self, verbose = False, evaluate = False, record = None):
+		recording = record is not None and len(record) > 0
+		if recording:
+			assert set(record).issubset(self.logging_options), "Undefined recording parameters"
+		state = self.env.reset(training = (not evaluate)) # reset state at start of each new episode of the game
 		# TAG: Depreciate
 		#track_action_p = False
-		
 		track = {}
 		if recording:
 			# Log action values at t=0
 			if "value" in record:
-				for j in range(len(self.possible_actions)):
+				for j in range(0, 3):
 					#print("state (sim)",state)
 					predicts = self.agent.predict(state)[0]
+					print(j)
 					self.new_run.log({'episode': self.episode_n, ('act_val' + str(j)): predicts[j]})
 
 			for stat in record:
@@ -261,20 +239,20 @@ class simulator:
 				if stat == "lo":
 					assert self.orderbook, "Limit orders can only be recorded in orderbook environments"
 					track[stat] = 0
-		
+
 		done = False # Has the episode finished
 
 		for t in range(self.num_steps):
 			# Get actions for each agent
 			action = self.agent.act(state)
-			
+
 			next_state, reward, done = self.env.step(action)
 
 			if recording:
 				if "count" in record and t < (self.num_steps - 1):
 					# The final action doesn't matter
 					track["count"].append(action)
-				
+
 				if "reward" in record:
 					track["reward"] += reward
 
@@ -295,12 +273,12 @@ class simulator:
 				# For final step print the predicted rewards for 0 position
 				if t == self.num_steps - 1:
 					print("Next predict", self.agent.predict(next_state))
-			
+
 			state = next_state
-				
-			if done: 
+
+			if done:
 				break # exit loop
-			
+
 			# TAG: Depreciate?
 			if self.intensive_training:
 				for i, agent in enumerate(self.agents):
@@ -314,10 +292,11 @@ class simulator:
 
 		if recording and "lo" in record:
 			track["lo"] = self.env.m.lo_value
-		
+
 		return track
 
-	def evaluate(self,n_episodes = 200):
+
+	def evaluate(self,n_episodes = 10):
 		raise "This function has not been updated to version 2"
 		self.train(n_episodes = n_episodes, show_details = False,evaluate = True)
 		# Return agent epsilons to their original values:
@@ -326,7 +305,6 @@ class simulator:
 
 
 	def show_stats(self,trained_from = 0,trained_to = None,moving_average = 400,training = True):
-		
 		if training:
 			if trained_to is None:
 				trained_to = len(self.train_rewards)
@@ -339,12 +317,13 @@ class simulator:
 				plt.plot(self._moving_average(self.eval_rewards[trained_from:trained_to,i],n=moving_average), label  = self.agents[i].agent_name)
 		plt.legend()
 
-	def show_dist(self, dist_agent, data,figure = 1, actions = [5,6]):
+
+	def show_dist(self, dist_agent, data, figure=1, actions=[5,6]):
 		plt.figure(figure)
 		for a in actions:
-			plt.bar(dist_agent.z,data[a][0],alpha = 0.4,width = 0.25,label = f"action {bar_act}")
+			plt.bar(dist_agent.z, data[a][0], alpha = 0.4, width = 0.25, label = f"action {bar_act}")
 		plt.legend()
-		
+
 
 	def execute(self,agent):
 		# Currently just one strat
@@ -352,13 +331,13 @@ class simulator:
 		position = []
 		cash = []
 		states = self.env.reset() # reset state at start of each new episode of the game
-		states = np.reshape(states, [len(training_agents),1, self.env.state_size])
-			
+		states = np.reshape(states, [len(training_agents), 1, self.env.state_size])
+
 		for t in range(self.num_steps):
 
 			action = agent.act(states)
 			next_state, reward, done = self.env.step(action)
-			next_states = np.reshape(next_states, [len(training_agents),1, self.env.state_size])
+			next_states = np.reshape(next_states, [len(training_agents), 1, self.env.state_size])
 			total_reward += rewards
 			#print(total_reward)
 			for i, agent in enumerate(training_agents):
@@ -366,8 +345,5 @@ class simulator:
 				training_agents[agent].remember(states[i], actions[i], rewards[i], next_states[i], done[i])
 			states = next_states
 
-			if all(done): 
-				break 
-
-		
-		
+			if all(done):
+				break
