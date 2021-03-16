@@ -1,8 +1,8 @@
-# ThesisCode
-Code for optimal execution.
+# Distributional Reinforcement Learning - Optimal Execution (Weston 2020)
 
-Run `run_me.py` for an example of useage. Note that this requires a wandb account (free) to retrieve the results.
+## File Descriptions 
+**Run_me.py** - This file includes global params for traning the model. I'll summarize the customizatios possible soon. The output of the file is sent to Wandb - a model tracker much like MLFlow. To set up, pip install wandb and link to your account. I'll add a graph of what the output should be like here - it tracks actions, states, rewards, etc.
 
-## Library
-Container for all agent and environment classes.
+**market_modelsM.py** - This includes the price evolution.
+
 
