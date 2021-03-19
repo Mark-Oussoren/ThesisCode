@@ -266,12 +266,13 @@ class market:
 
 	def sell(self, volume, dt):
 		'''sell volume of stock over time dt, volume is an array'''
-		self.price_adjust *= self.exp_g(volume)
-		profit = (self._adjusted_price() - self.f(volume/dt) - 0.5 * self.spread) * volume
-		if profit < 0:
-			# TODO - what is going on here - it's not negative price, but profit so why are we initializing to 0?
-			profit = 0
-		return profit
+		self.price_adjust *= np.exp(-self.g(volume))
+		adjusted_price = self.stock.price * self.price_adjust
+		price = (adjusted_price - self.f(volume/dt) - 0.5 * self.spread) * volume
+		if price < 0:
+			# TODO - what is going on here - impact needs to be scaled down or changed if price < 0
+			price = 0
+		return price
 
 
 	def g(self, v):
@@ -282,21 +283,12 @@ class market:
 		return v * self.b
 
 
-	def exp_g(self, v):
-		return np.exp(-self.g(v))
-
-
 	def f(self, v):
+		"""
+		(Linear) Temporary Impact function - f(v/dt)=kv where k is a real number
+		:param v: volume (int)
+		"""
 		return v * self.k #0.00186 # Temporarily adjusting by 10 to account for non unit terminal
-		# What should this be?
-			# - HFT book (position = 1, terminal  = 1, k = 0.01)
-			# Since position = 1 but terminal = 10 I've *10
-			# NOW CHANGED TO 0.001 (V LOW) TO TEST STOCK PROCESSING NET
-
-
-	def _adjusted_price(self):
-		#print("price",self.stock.price,"adjust",self.price_adjust)
-		return self.stock.price * self.price_adjust
 
 
 	def reset(self, dt, training=True):
@@ -305,7 +297,6 @@ class market:
 		if self.n_hist_prices > 0:
 			for col in self.hist:
 				self.hist[col] = self.stock.get_hist(self.n_hist_prices, dt, col=col)
-		#print(list(self.hist.values()))
 
 
 	def progress(self, dt):
