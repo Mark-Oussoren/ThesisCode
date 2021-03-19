@@ -260,31 +260,34 @@ class market:
 					self.hist = {
 								col : []
 								}
-				elif (col not in ['buyMO','sellMO','askSize','bidSize','ask']):
+				elif (col not in ['buyMO', 'sellMO', 'askSize', 'bidSize', 'ask']):
 					self.hist[col] = []
 
 
 	def sell(self, volume, dt):
-		'''sell *volume* of stock over time window dt, volume is np array'''
-		#print(volume / dt)
+		'''sell volume of stock over time dt, volume is an array'''
 		self.price_adjust *= self.exp_g(volume)
-		#print("rate ", volume/dt, "price_adjust ",self.price_adjust)        
-		ret = (self._adjusted_price() - self.f(volume/dt) - 0.5 * self.spread) * volume 
-		if ret < 0:
-			ret = 0 # Slight quirk of the linear temporary impact is that if we try and sell 5000 in 5 seconds we may get a negative price, not very realistc
-			# maybe impact coefficient is too high...
-		#print("volume",volume,"ret",ret)
-		return ret
+		profit = (self._adjusted_price() - self.f(volume/dt) - 0.5 * self.spread) * volume
+		if profit < 0:
+			# TODO - what is going on here - it's not negative price, but profit so why are we initializing to 0?
+			profit = 0
+		return profit
+
 
 	def g(self, v):
+		"""
+		(Linear) Permanent Impact function - g(v)=bv where b is a real number
+		:param v: volume (int)
+		"""
 		return v * self.b
-    
+
+
 	def exp_g(self, v):
 		return np.exp(-self.g(v))
 
-	def f(self, v):
 
-		return v * self.k#0.00186 # Temporarily adjusting by 10 to account for non unit terminal
+	def f(self, v):
+		return v * self.k #0.00186 # Temporarily adjusting by 10 to account for non unit terminal
 		# What should this be?
 			# - HFT book (position = 1, terminal  = 1, k = 0.01)
 			# Since position = 1 but terminal = 10 I've *10
@@ -301,10 +304,10 @@ class market:
 		self.price_adjust = 1
 		if self.n_hist_prices > 0:
 			for col in self.hist:
-				self.hist[col] = self.stock.get_hist(self.n_hist_prices,dt,col = col)
+				self.hist[col] = self.stock.get_hist(self.n_hist_prices, dt, col=col)
 		#print(list(self.hist.values()))
-			
-			
+
+
 	def progress(self, dt):
 		self.stock.generate_price(dt)
 		if self.n_hist_prices > 0:
@@ -375,12 +378,10 @@ class lob_market(market):
 		# NOTE: We are assuming that lo_position is monotonically increasing
 		assert self._monotonic_increasing(self.lo_position), f"Order positons, {self.lo_position}, should be increasing"
 		# Diagram letters in comments
-
 		try:
 			self.lo_position -= self.stock.market_orders
 		except:
 			assert False, f"something wrong above, pos {self.lo_position}, type {type(self.lo_position)} -= {type(float(self.stock.market_orders))}"
-
 		pos_plus_size = self.lo_position + self.lo_size #E
 		#print("pos plus size",pos_plus_size)
 		pos_lt_zero = (self.lo_position < 0) #D
@@ -390,12 +391,9 @@ class lob_market(market):
 		fulfilled_total = np.sum(fulfilled_sizes)
 		self.lo_total_pos -= fulfilled_total
 		#print("fulfilled total",fulfilled_total)
-
 		# Now update lo_size and lo_position to reflect changes
-		
 		# First check that the top of book ask hasn't changed
 		if self.lo_price != self.stock.ask:
-			
 			if self.lo_price > self.stock.ask:
 				# market price has become more competitive
 				self.reset_lo()
@@ -430,7 +428,6 @@ class lob_market(market):
 			self.lo_size = self.lo_size[self.lo_size > 0]
 			self.lo_position = np.maximum(self.lo_position,0)
 			self.lo_position = self.lo_position[len(self.lo_position) - len(self.lo_size):]
-			
 
 		# Now check that all limit orders are at minimum the market askSize
 		if len(self.lo_position) > 0:
@@ -463,15 +460,3 @@ class lob_market(market):
 	def _monotonic_increasing(x):
 		dx = np.diff(x)
 		return np.all(dx >= 0)
-
-
-
-
-
-
-
-
-
-
-
-# End
