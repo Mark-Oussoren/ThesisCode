@@ -10,7 +10,6 @@ n_hist_data = 64
 lr = 0.00005
 state_size = 2
 params = {
-    "terminal" : 1,
     "num_trades" : n_trades,
     "position" : 1,
     "batch_size" : 64,
