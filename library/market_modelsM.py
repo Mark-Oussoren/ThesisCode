@@ -28,34 +28,43 @@ class bs_stock:
 
 	def generate_price(self, dt):
 		St = self.price
-		self.price = St * np.exp((self.drift - 0.5 * (self.vol ** 2)) * dt + self.vol * (dt ** 0.5) * gauss(0,1))
+		self.price = St * np.exp((self.drift - 0.5 * (self.vol ** 2)) * dt + self.vol * (dt ** 0.5) * gauss(0, 1))
 		return self.price
 
 
 class mean_rev_stock(bs_stock):
-	def __init__(self, S0, drift, vol, reversion):
+	def __init__(self, S0, drift, vol, reversion, alpha=0, eps=0.05, xi=0.5, LAMBDA=0.5, beta=0.01):
+		"""
+		:param reversion: 
+		:param alpha: 
+		:param eps: 
+		:param xi: 
+		:param LAMBDA: Poisson parameter, float
+		:param beta: 
+		"""
 		bs_stock.__init__(self, S0, drift, vol)
 		self.reversion = reversion
-		self.alpha = 0
-		self.eps = 0.05
-		self.xi = 0.5
-		self.lamb = 0.5
-		self.beta = 0.01
+		self.alpha = alpha
+		self.eps = eps
+		self.xi = xi 
+		self.LAMBDA = LAMBDA 
+		self.beta = beta 
 
 
 	def generate_price(self, dt, St=None):
 		if St is None:
 			St = self.price
 		jump = 0
-		self.M = np.random.poisson(self.lamb * 2)
+		self.M = np.random.poisson(self.LAMBDA * 2)
 		# Note we are assuming here that dt is sufficiently small that >1 jumps is highly unlikely
+		# What is Mp?
 		if Mp < dt:
 			if random.random() < 0.5:
 				jump = 1
 			else:
 				jump = -1
-		self.alpha += -self.alpha * self.xi * dt + self.beta * (dt ** 0.5) * gauss(0,1) + jump * self.eps * gauss(0,1)
-		self.price = St * np.exp((self.drift - 0.5 * self.vol) * dt + self.vol * dt**0.5 * gauss(0,1))
+		self.alpha += -self.alpha * self.xi * dt + self.beta * (dt ** 0.5) * gauss(0, 1) + jump * self.eps * gauss(0, 1)
+		self.price = St * np.exp((self.drift - 0.5 * self.vol) * dt + self.vol * (dt ** 0.5) * gauss(0, 1))
 		return self.price
 
 
