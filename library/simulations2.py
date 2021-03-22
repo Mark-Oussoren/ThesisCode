@@ -11,17 +11,16 @@ from os import path
 local = path.exists("data")
 if local:
 	print("Running locally")
+	
+	
 class simulator:
 	def __init__(self, market_, agent, params=None, test_name=None, orderbook=False):
-		# Default params for testing
 		if params is None:
-			params = {"terminal" : 1,
-					  "num_trades" : 50,
+			params = {"num_trades" : 50,
 					  "position" : 10,
 					  "batch_size" : 32,
-					  "action_values" : [0,0.001,0.005,0.01,0.02,0.05,0.1]}
+					  "action_values" : [0, 0.001, 0.005, 0.01, 0.02, 0.05, 0.1]}
 			print(f"Training with default parameters: {params}")
-		self.terminal = params["terminal"]
 		self.num_steps = params["num_trades"]
 		self.batch_size = params["batch_size"]
 		self.agent = agent
@@ -49,14 +48,12 @@ class simulator:
 			self.eval_freq = 10
 			self.eval_window = 10
 		else:
-			self.eval_freq = 10 #500
-			self.eval_window = 10 #400
+			self.eval_freq = 10
+			self.eval_window = 10
 		self.train_stat_freq = 100
-		self.episode_n = 0 # Number of training episodes completed
+		self.episode_n = 0
 		self.logging_options = set(["count", "value", "position", "event", "reward", "lo", "lotime"])
-		# self.position_granularity = 4
-		self.new_run = wandb.init(project="OptEx", name = self.agent.agent_name,group = self.test_name, reinit=True)
-		# wandb.save('latest.pth')
+		self.new_run = wandb.init(project="OptEx", name=self.agent.agent_name, group=self.test_name, reinit=True)
 		self.new_run.config.update({"num_trades": self.num_steps,
 		 "batch_size": self.batch_size,
 		 "action_size": len(self.possible_actions),
@@ -102,8 +99,8 @@ class simulator:
 
 	def __str__(self):
 		return f"{type(agent).__name__} exiting position {self.env.initial_position} over period of {self.m.stock.n_steps} seconds, changing trading rate every {self.trade_freq} seconds."
-	
-	
+
+
 	@staticmethod
 	def _moving_average(a, n=300):
 		ret = np.cumsum(a, dtype=float)
@@ -121,23 +118,23 @@ class simulator:
 		next_state = np.reshape(next_state, [1, self.env.state_size])
 		self.agent.remember(state, a, 0, next_state, True)
 
+
 	# TAG: overhaul
 	def pretrain(self, n_samples=2000, n_iterations=500):
 		raise "This function has not been updated for version 2"
 		pretain_position = True
 		pretrain_time = False
 		for i in range(n_samples):
-			# Pretrain for state where position is 0 
+			# Pretrain for state where position is 0
 			# Randomly sample transformed t in the time interval [-1,1] and action from space
 			if pretain_position:
 				self._pretrain_position()
-
-			# Pretrain for state where time is 0 
+			# Pretrain for state where time is 0
 			if pretrain_time:
 				# Randomly sample transformed position in the time interval [-1,1] and action from space
-				p = random.uniform(-1,1)
+				p = random.uniform(-1, 1)
 				a = random.randrange(len(self.possible_actions))
-				state = [p,1]
+				state = [p, 1]
 				state = np.reshape(state, [1, self.env.state_size])
 				self.agent.remember(state, a, 0, state, True)
 		for i in range(n_iterations):
@@ -180,8 +177,10 @@ class simulator:
 			total_position = [total_position[i] + (track["position"][i] if i < len(track["position"]) else 0) for i in range(self.num_steps)]
 			if self.orderbook:
 				total_lo_value += track["lo"]
+
 		for j in range(len(self.possible_actions)):
 			self.new_run.log({'episode': self.episode_n, ('eval_act_count' + str(j)): total_count.count(j) / n_episodes})
+
 		self.new_run.log({'episode': self.episode_n, 'eval_rewards': total_reward / n_episodes})
 		if self.orderbook:
 			self.new_run.log({'episode': self.episode_n, 'lo_value': total_lo_value / n_episodes})
@@ -194,7 +193,7 @@ class simulator:
 			self.new_run.log({'episode': self.episode_n, ('position' + str(j)): total_position[j] / n_episodes})
 
 
-	def train(self,n_episodes = 10, epsilon = None, epsilon_decay = None,show_details = True, evaluate = False):
+	def train(self,n_episodes=10, epsilon=None, epsilon_decay=None, show_details=True, evaluate=False):
 		if epsilon is not None:
 			self.agent.epsilon = epsilon
 		if epsilon_decay is not None:
@@ -245,40 +244,29 @@ class simulator:
 		for t in range(self.num_steps):
 			# Get actions for each agent
 			action = self.agent.act(state)
-
 			next_state, reward, done = self.env.step(action)
-
 			if recording:
 				if "count" in record and t < (self.num_steps - 1):
 					# The final action doesn't matter
 					track["count"].append(action)
-
 				if "reward" in record:
 					track["reward"] += reward
-
 				if "event" in record:
 					print("WARNING: Track events has not been implemented")
 					track_events = False
-
 				if "position" in record:
 					track["position"].append(self.env.position)
-
-
 			if not evaluate:
 				self.agent.remember(state, action, reward, next_state, done)
-
 			if verbose:
 				print("Predict", self.agent.predict(state))
 				print("State: ",state, "Action: ", action, "Reward: ", reward, "Next State: ", next_state, "Done: ", done)
 				# For final step print the predicted rewards for 0 position
 				if t == self.num_steps - 1:
 					print("Next predict", self.agent.predict(next_state))
-
 			state = next_state
-
 			if done:
 				break # exit loop
-
 			# TAG: Depreciate?
 			if self.intensive_training:
 				for i, agent in enumerate(self.agents):
@@ -289,52 +277,48 @@ class simulator:
 		if not done:
 			print(state)
 			print("We have a problem.")
-
 		if recording and "lo" in record:
 			track["lo"] = self.env.m.lo_value
-
 		return track
 
 
-	def evaluate(self,n_episodes = 10):
+	def evaluate(self, n_episodes=10):
 		raise "This function has not been updated to version 2"
-		self.train(n_episodes = n_episodes, show_details = False,evaluate = True)
+		self.train(n_episodes=n_episodes, show_details=False, evaluate=True)
 		# Return agent epsilons to their original values:
 		for i, agent in enumerate(self.agents):
 			agent.evaluate = False
 
 
-	def show_stats(self,trained_from = 0,trained_to = None,moving_average = 400,training = True):
+	def show_stats(self, trained_from=0, trained_to=None, moving_average = 400, training=True):
 		if training:
 			if trained_to is None:
 				trained_to = len(self.train_rewards)
 			for i in range(self.train_rewards.shape[1]):
-				plt.plot(self._moving_average(self.train_rewards[trained_from:trained_to,i],n=moving_average), label  = self.agents[i].agent_name)
+				plt.plot(self._moving_average(self.train_rewards[trained_from:trained_to, i], n=moving_average), label=self.agents[i].agent_name)
 		else:
 			if trained_to is None:
 				trained_to = len(self.eval_rewards)
 			for i in range(self.eval_rewards.shape[1]):
-				plt.plot(self._moving_average(self.eval_rewards[trained_from:trained_to,i],n=moving_average), label  = self.agents[i].agent_name)
+				plt.plot(self._moving_average(self.eval_rewards[trained_from:trained_to, i], n=moving_average), label=self.agents[i].agent_name)
 		plt.legend()
 
 
-	def show_dist(self, dist_agent, data, figure=1, actions=[5,6]):
+	def show_dist(self, dist_agent, data, figure=1, actions=[5, 6]):
 		plt.figure(figure)
 		for a in actions:
 			plt.bar(dist_agent.z, data[a][0], alpha = 0.4, width = 0.25, label = f"action {bar_act}")
 		plt.legend()
 
 
-	def execute(self,agent):
+	def execute(self, agent):
 		# Currently just one strat
 		raise "Depreciated function"
 		position = []
 		cash = []
 		states = self.env.reset() # reset state at start of each new episode of the game
 		states = np.reshape(states, [len(training_agents), 1, self.env.state_size])
-
 		for t in range(self.num_steps):
-
 			action = agent.act(states)
 			next_state, reward, done = self.env.step(action)
 			next_states = np.reshape(next_states, [len(training_agents), 1, self.env.state_size])
@@ -343,7 +327,7 @@ class simulator:
 			for i, agent in enumerate(training_agents):
 				# Note this happens when its been done for more than one step
 				training_agents[agent].remember(states[i], actions[i], rewards[i], next_states[i], done[i])
+				
 			states = next_states
-
 			if all(done):
 				break
