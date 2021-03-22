@@ -8,37 +8,33 @@ RARE_DEBUG = False
 
 
 class bs_stock:
-	def __init__(self, S0, drift, vol, terminal=1, n_steps=10):
+	def __init__(self, S0, drift, vol, n_steps=10):
 		"""
 		:param S0: initial price of stock, float
 		:param drift: float
 		:param vol: daily volatility, float
-		:param terminal:
 		:param n_steps: # of time steps agent can act, int
 		"""
 		self.S0 = S0
 		self.drift = drift
 		self.vol = vol
-		self.terminal = terminal
 		self.n_steps = n_steps
-		self.reset()
-
-
-	def generate_price(self,dt,St = None):
-		dt = dt * self.terminal
-		if St is None:
-			St = self.price
-		self.price = St * np.exp((self.drift - 0.5 * self.vol ** 2) * dt + self.vol * dt**0.5 * gauss(0,1))
-		return self.price
-
-
-	def reset(self,training=None):
 		self.price = self.S0
+
+
+	def reset(self, **kwargs):
+		self.price = self.S0
+
+
+	def generate_price(self, dt):
+		St = self.price
+		self.price = St * np.exp((self.drift - 0.5 * (self.vol ** 2)) * dt + self.vol * (dt ** 0.5) * gauss(0,1))
+		return self.price
 
 
 class mean_rev_stock(bs_stock):
 	def __init__(self, S0, drift, vol, reversion):
-		bs_stock.__init__(self, S0, drift,vol)
+		bs_stock.__init__(self, S0, drift, vol)
 		self.reversion = reversion
 		self.alpha = 0
 		self.eps = 0.05
@@ -58,7 +54,7 @@ class mean_rev_stock(bs_stock):
 				jump = 1
 			else:
 				jump = -1
-		self.alpha += - self.alpha * self.xi * dt + self.beta * dt**0.5 * gauss(0,1) + jump * self.eps * gauss(0,1)
+		self.alpha += -self.alpha * self.xi * dt + self.beta * (dt ** 0.5) * gauss(0,1) + jump * self.eps * gauss(0,1)
 		self.price = St * np.exp((self.drift - 0.5 * self.vol) * dt + self.vol * dt**0.5 * gauss(0,1))
 		return self.price
 
@@ -67,7 +63,7 @@ class signal_stock(bs_stock):
 	def __init__(self, S0, vol, gamma, drift_vol):
 		self.gamma = gamma
 		self.drift_vol = drift_vol
-		super(signal_stock,self).__init__(S0, vol, 0)
+		super(signal_stock, self).__init__(S0, vol, 0)
 
 
 	def generate_price(self, dt, St=None):
@@ -79,7 +75,7 @@ class signal_stock(bs_stock):
 		return self.price
 
 
-	def reset(self):
+	def reset(self, **kwargs):
 		self.price = self.S0
 		self.signal = 0 # Always start with no signal (could improve this)
 
