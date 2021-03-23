@@ -26,7 +26,7 @@ class bs_stock:
 		self.price = self.S0
 
 
-	def generate_price(self, dt):
+	def generate_price(self, dt, St=None):
 		St = self.price
 		self.price = St * np.exp((self.drift - 0.5 * (self.vol ** 2)) * dt + self.vol * (dt ** 0.5) * gauss(0, 1))
 		return self.price
@@ -35,20 +35,20 @@ class bs_stock:
 class mean_rev_stock(bs_stock):
 	def __init__(self, S0, drift, vol, reversion, alpha=0, eps=0.05, xi=0.5, LAMBDA=0.5, beta=0.01):
 		"""
-		:param reversion: 
-		:param alpha: 
+		:param reversion:
+		:param alpha:
 		:param eps: 
-		:param xi: 
+		:param xi:
 		:param LAMBDA: Poisson parameter, float
-		:param beta: 
+		:param beta:
 		"""
 		bs_stock.__init__(self, S0, drift, vol)
 		self.reversion = reversion
 		self.alpha = alpha
 		self.eps = eps
-		self.xi = xi 
-		self.LAMBDA = LAMBDA 
-		self.beta = beta 
+		self.xi = xi
+		self.LAMBDA = LAMBDA
+		self.beta = beta
 
 
 	def generate_price(self, dt, St=None):
@@ -69,18 +69,21 @@ class mean_rev_stock(bs_stock):
 
 
 class signal_stock(bs_stock):
-	def __init__(self, S0, vol, gamma, drift_vol):
+	def __init__(self, S0, vol, gamma, signal_vol):
+		"""
+		:param gamma:
+		:param signal_vol:
+		"""
 		self.gamma = gamma
-		self.drift_vol = drift_vol
+		self.signal_vol = signal_vol
 		super(signal_stock, self).__init__(S0, vol, 0)
 
 
 	def generate_price(self, dt, St=None):
-		if St is None:
-			St = self.price
-		# Mean reverting OU process for the signal
-		self.signal = - self.gamma * self.signal * dt + self.signal_vol * dt ** 0.5 * gauss(0, 1)
-		self.price = St * np.exp((self.signal - 0.5 * self.vol ** 2) * dt + self.vol * dt ** 0.5 * gauss(0, 1))
+		St = self.price
+		# Not sure this implementation works for Mean reverting OU process of signal
+		self.signal = -self.gamma * self.signal * dt + self.signal_vol * (dt ** 0.5) * gauss(0, 1)
+		self.price = St * np.exp((self.signal - 0.5 * (self.vol ** 2)) * dt + self.vol * (dt ** 0.5) * gauss(0, 1))
 		return self.price
 
 
