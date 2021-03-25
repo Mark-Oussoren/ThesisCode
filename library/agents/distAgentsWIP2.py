@@ -24,13 +24,14 @@ if local:
 	print("Running locally")
 if not local:
 	def huber_loss(y_true, y_pred, clip_delta=1.0):
-	  error = y_true - y_pred
-	  cond  = K.abs(error) < clip_delta
-	  squared_loss = 0.5 * K.square(error)
-	  linear_loss  = clip_delta * (K.abs(error) - 0.5 * clip_delta)
-	  return tf.where(cond, squared_loss, linear_loss)
+		error = y_true - y_pred
+		cond  = K.abs(error) < clip_delta
+		squared_loss = 0.5 * K.square(error)
+		linear_loss  = clip_delta * (K.abs(error) - 0.5 * clip_delta)
+		return tf.where(cond, squared_loss, linear_loss)
 else:
 	from keras.losses import huber_loss
+
 
 class distAgent(learningAgent):
 	def __init__(self, state_size, action_values, agent_name, C, alternative_target, UCB=False, UCBc=1, tree_horizon=3, n_hist_data=0, n_hist_inputs=0, orderbook=True):
@@ -48,21 +49,19 @@ class distAgent(learningAgent):
 			self.t = 1
 			self.epsilon_greedy = False
 
+
 	def step(self):
 		if self.UCB:
 			self.t += 1
-
 		super(distAgent,self).step()
+
 
 	def act(self, state):
 		# No eps greedy required for 'UCB' type update
-
 		# Predict return
 		act_values = self.predict(state)
-
 		if self.evaluate:
 			return np.argmax(act_values[0])
-		
 		if self.UCB:
 			if self.t < 50:
 				act = random.randrange(self.action_size)
@@ -75,17 +74,10 @@ class distAgent(learningAgent):
 		if np.random.rand() <= self.epsilon:
 			rand_act = random.randrange(self.action_size)
 			return rand_act#random.randrange(self.action_size)
-				
 		return np.argmax(act_values[0])
 
+
 	def _process_state_action(self,state,action_index):
-		#print("state",state)
-		'''
-		if self.n_hist_data > 0:
-			local_state, market_state = state
-		else:
-			local_state = state
-		'''
 		res = copy.deepcopy(state)
 		if self.action_space_size == 1:
 			# Single action input
@@ -95,20 +87,20 @@ class distAgent(learningAgent):
 			action = np.array(self.action_values[action_index]) * self.trans_a + self.trans_b
 		if self.n_hist_data > 0:
 			# Two state inputs
-			print(state[0])
-			res[0] = np.reshape(np.concatenate((np.array(state[0][0]), action), axis=None), [1, len(state[0][0]) + self.action_space_size])
+			print(np.concatenate((np.array(state[0][0]), action), axis=None))
+			res[0] = np.reshape(np.concatenate((np.array(state[0][0]), action), axis=None), [1, len(state[0][0]) + self.action_space_size - 1])
 		else:
 			# One state input
-			res = np.reshape(np.concatenate((np.array(state[0]), action), axis=None), [1, len(state[0]) + self.action_space_size])
-		
+			res = np.reshape(np.concatenate((np.array(state[0]), action), axis=None), [1, len(state[0]) + self.action_space_size - 1])
 		return res
+
 
 	# 'Virtual' Function
 	def variance(self,state):
 		raise "Variance must be overwritten by child"
 
-class C51Agent(distAgent):
 
+class C51Agent(distAgent):
 	def __init__(self, state_size, action_values, agent_name, N=51, C=0, alternative_target=False, UCB=False, UCBc=1, tree_horizon=3, n_hist_data=0, n_hist_inputs=0):
 		self.V_max = 0.05
 		self.V_min = -0.1
@@ -118,18 +110,17 @@ class C51Agent(distAgent):
 		# Paper: increasing N always increases returns
 		self.dz = (self.V_max - self.V_min) / (self.N - 1) # (2 * self.V_max)
 		self.z = np.array(range(self.N)) * (self.V_max - self.V_min) / (self.N - 1) + self.V_min
-		
-		distAgent.__init__(self,state_size, action_values, agent_name,C, alternative_target,UCB,UCBc,tree_horizon,n_hist_data=n_hist_data,n_hist_inputs=n_hist_inputs)
+		distAgent.__init__(self,state_size, action_values, agent_name, C, alternative_target, UCB, UCBc, tree_horizon, n_hist_data=n_hist_data, n_hist_inputs=n_hist_inputs)
 
-	def return_mapping(self,state,ret,inverse = False):
+
+	def return_mapping(self, state, ret, inverse=False):
 		if inverse:
 			return ret - state[0][0] * self.result_scaling_factor
-
 		return ret + state[0][0] * self.result_scaling_factor
 
-	def probs(self,state,action_index,target=False):
-		state_action = self._process_state_action(state,action_index)
-		
+
+	def probs(self, state, action_index, target=False):
+		state_action = self._process_state_action(state, action_index)
 		if DEBUG:
 			#print("probs of ",state_action,"are",self.model.predict(state_action))
 			pass
@@ -139,36 +130,44 @@ class C51Agent(distAgent):
 			res = self.model.predict(state_action)
 		return res
 
-	def predict(self,state,target = False):
+
+	def predict(self, state, target=False):
 		# Could maybe improve efficiency here rather than deepcopying and editing
-		res = self.vpredict(copy.deepcopy(state),range(len(self.action_values)),target = target)
+		res = self.vpredict(copy.deepcopy(state), range(len(self.action_values)), target=target)
 		return np.reshape(res, [1, len(res)])
 
-	def predict_act(self,state,action_index,target = False):
+
+	def predict_act(self, state, action_index, target=False):
 		#state_action = np.reshape(np.append(state,action), [1, len(state[0]) + 1])
 		#print("predicting ", state_action)
-		dist = self.probs(state,action_index,target = target)
+		dist = self.probs(state, action_index, target=target)
 		return np.sum(dist * self.mapped_z(state))
 
-	def vpredict(self,state,action_indices,target = False):
-		return np.vectorize(self.predict_act,excluded=['state'] )(state = state,action_index = action_indices,target = target)
+
+	def vpredict(self, state, action_indices, target=False):
+		return np.vectorize(self.predict_act, excluded=['state'])(state=state, action_index=action_indices, target=target)
+
 
 	def Tz(self,state,reward):
 		Tz = reward + self.gamma * self.mapped_z(state)
 		return Tz
 
+
 	def mapped_z(self,state):
 		return self.z + (state[0][0] / 2 + 0.5)
+
 
 	def mapped_dz(self,state):
 		return self.dz
 
+
 	def mapped_bounds(self,state):
 		return (self.V_min + (state[0][0] / 2 + 0.5), self.V_max + (state[0][0] / 2 + 0.5))
 
+
 	# Get unmapped results using basis: STATE
 	# Could be made more efficient
-	def projTZ_nTree(self,state,reward,next_state,done,horizon,mem_index):
+	def projTZ_nTree(self, state, reward, next_state, done, horizon, mem_index):
 		res = []
 		tree_success = False
 		V_min_s, V_max_s = self.mapped_bounds(state)
@@ -185,27 +184,28 @@ class C51Agent(distAgent):
 			if not tree_success:
 				all_probs = self.probs(next_state,next_action_index,target = True)[0]
 			for i in range(self.N):
-				res.append(np.sum(self._bound(1 - np.abs(self._bound(self.Tz(next_state,reward),V_min_s,V_max_s) - self.mapped_z(state)[i])/self.mapped_dz(state),0,1) * all_probs))
+				res.append(np.sum(self._bound(1 - np.abs(self._bound(self.Tz(next_state,reward), V_min_s, V_max_s) - self.mapped_z(state)[i]) / self.mapped_dz(state), 0, 1) * all_probs))
+				
 		else:
 			#reward_v = np.ones(N) * reward
 			for i in range(self.N):
-				res.append(self._bound(1 - np.abs(self._bound(reward,V_min_s,V_max_s) - self.mapped_z(state)[i])/self.mapped_dz(state),0,1))
-				#print("reward ", self._bound(reward,self.V_min,self.V_max), " dz ", self.dz, " z[i] ", self.z[i], " append ",(self._bound(reward,self.V_min,self.V_max) - self.z[i])/self.dz)
+				res.append(self._bound(1 - np.abs(self._bound(reward,V_min_s,V_max_s) - self.mapped_z(state)[i])/self.mapped_dz(state), 0, 1))
+
 		return res
 
-	def _bound(self,vec,lower,upper):
-		return np.minimum(np.maximum(vec,lower),upper)
+
+	def _bound(self, vec, lower,upper):
+		return np.minimum(np.maximum(vec, lower), upper)
+
 
 	def _build_model(self):
 		# Using Keras functional API
 		state_in = Input(shape=(self.state_size + 1,))
-		
 		# If using market data
 		if self.n_hist_data > 0:
 			input_layer = concatenate([state_in,self.stock_model.output])
 		else:
 			input_layer = state_in
-
 		hidden1 = Dense(32, activation='relu')(input_layer)
 		#hidden1_n = BatchNormalization() (hidden1)
 		hidden2 = Dense(32, activation='relu')(hidden1)
@@ -222,12 +222,12 @@ class C51Agent(distAgent):
 
 
 	def fit(self,state, action_index, reward, next_state, done,mem_index = -1):
-		state_action = self._process_state_action(state,action_index)
+		state_action = self._process_state_action(state, action_index)
 		#print("fit",next_state)
 		if self.tree_n > 1:
-			target = self.projTZ_nTree(state,reward,next_state,done,self.tree_n,mem_index)
+			target = self.projTZ_nTree(state, reward, next_state, done, self.tree_n, mem_index)
 		else:
-			target = self.projTZ(reward,next_state,done)
+			target = self.projTZ(reward, next_state, done)
 		target_f = np.reshape(target, [1, self.N])
 		#if DEBUG:
 			#print("target_f ",target_f[action_index][0], "target ", target)
@@ -235,34 +235,36 @@ class C51Agent(distAgent):
 		#print("fitting state:", state,",action:",action_index,",reward:",reward, " delta target_f ",target_f[action_index][0]-debug_target_f,"done:",done)
 		# Needs reworking
 		#local,market = state_action
-
 		self.model.fit(state_action, target_f,epochs=1, verbose=0)
 
 
-	def variance(self,state,target = False):
-		res = self.vvar(state,range(len(self.action_values)),target = target) - np.power(self.predict(state,target),2)
-		if not all(np.round(res[0],5) >= 0):
+	def variance(self, state, target=False):
+		res = self.vvar(state, range(len(self.action_values)), target=target) - np.power(self.predict(state, target), 2)
+		if not all(np.round(res[0], 5) >= 0):
 			print("WARNING")
 			print(res)
-			print(np.power(self.predict(state,target),2))
+			print(np.power(self.predict(state, target), 2))
 			print(self.t)
-			print("mapped_z",self.mapped_z(state))
-			print("probs0",self.probs(state,0))
+			print("mapped_z", self.mapped_z(state))
+			print("probs0", self.probs(state, 0))
 		#assert all(np.round(res[0],5) >= 0)
-		return np.max(res,0)#np.reshape(res, [1, res.shape[0]])
+		return np.max(res, 0)#np.reshape(res, [1, res.shape[0]])
 
-	def var_act(self,state,action_index,target = False):
+
+	def var_act(self, state, action_index, target=False):
 		#state_action = np.reshape(np.append(state,action), [1, len(state[0]) + 1])
 		#print("predicting ", state_action)
-		dist = self.probs(state,action_index,target = target)[0]
-		return np.sum(dist * np.power(self.mapped_z(state),2))
+		dist = self.probs(state, action_index, target=target)[0]
+		return np.sum(dist * np.power(self.mapped_z(state), 2))
+
 
 	def vvar(self,state,action_indices,target = False):
 		return np.vectorize(self.var_act,excluded=['state'] )(state = state,action_index = action_indices,target = target)
 
+
 # Build the network seperately
 class IQNNetwork(Model):
-	def __init__(self,state_size,N,state_model_size_out,embedding_dim):
+	def __init__(self, state_size, N,state_model_size_out, embedding_dim):
 		super(IQNNetwork,self).__init__()
 		self.N = N
 		self.embedding_dim = embedding_dim
@@ -284,7 +286,7 @@ class IQNNetwork(Model):
 		#state_hidden2 = Dense(self.state_model_size_out, activation='relu')(state_hidden1)
 
 
-	def call(self,inputs):
+	def call(self, inputs):
 		state_action,quantiles_selected = inputs
 		embedded_quantiles = np.cos(np.dot(embedded_range, self.quantiles) * np.pi)
 		embedded_quantiles.shape = (self.N,1)
@@ -351,6 +353,7 @@ class QRAgent(distAgent):
 		self.optimisticUCB = False
 		super(QRAgent,self).__init__(state_size, action_values, agent_name, C, alternative_target, UCB, UCBc, tree_horizon, n_hist_data=n_hist_data, n_hist_inputs=n_hist_inputs, orderbook=orderbook)
 		
+		
 	# https://stackoverflow.com/questions/55445712/custom-loss-function-in-keras-based-on-the-input-data
 	@staticmethod
 	def huber_loss_quantile(tau, kappa):
@@ -384,7 +387,6 @@ class QRAgent(distAgent):
 					input_layer = concatenate([state_in, hist_model.output])
 		else:
 				input_layer = state_in
-
 		# Testing adding skip layers and dropout
 		skip_layer = Dense(self.model_units, activation='relu')(input_layer)
 		for i in range(self.model_layers-1):
@@ -392,25 +394,21 @@ class QRAgent(distAgent):
 			#dropout = Dropout(0.1)(layer)
 			skip_layer = Add()([skip_layer, layer])
 
-
 		outputs = Dense(self.N, activation='linear')(skip_layer)
 		#main_model = Model(inputs=state_in, outputs=outputs)
-
 		if self.n_hist_data > 0:
 			all_inputs = [state_in,hist_model.input]
-
 		else:
 			all_inputs = state_in
-		
 		model = Model(inputs=all_inputs, outputs=outputs)
-		model.compile(loss = self.huber_loss_quantile(self.quantiles,self.kappa),
-						optimizer=Adam(lr=self.learning_rate,epsilon = 0.01/32))
+		model.compile(loss = self.huber_loss_quantile(self.quantiles, self.kappa),
+						optimizer=Adam(lr=self.learning_rate, epsilon=0.01/32))
 		return model
 
-	def predict_action(self, state,action_index, target=False, above_med=False):
+
+	def predict_action(self, state, action_index, target=False, above_med=False):
 		state_action = self._process_state_action(state, action_index)
 		predict = self.predict_quantiles(state_action, target)
-		
 		#if self.C > 0 and target:
 			#assert not above_med, "Why is variance being used with target?"
 			#return np.add.reduce(self.qi * predict,1)
@@ -419,16 +417,16 @@ class QRAgent(distAgent):
 		#predict = self.model.predict(state_action)[0]
 		if above_med:
 			predict = predict[0][int(len(predict)/2):]
-			predict = np.reshape(predict,[1,len(predict)])
+			predict = np.reshape(predict, [1, len(predict)])
 			#return np.add.reduce(self.qi * predict,1)
-		return np.add.reduce(self.qi * predict,1)
+		return np.add.reduce(self.qi * predict, 1)
 
-	def _reward_scaling(self,state_action):
+	def _reward_scaling(self, state_action):
 		if self.reward_scaling:
 			if self.twap_scaling:
 				assert self.n_hist_data > 0, "TWAP Scaling only available with market data"
 				# Inventory * initial_price - 0.001 * time
-				return state_action[0][0][0] - 0.001 * state_action[0][0][1],1
+				return state_action[0][0][0] - 0.001 * state_action[0][0][1], 1
 			elif self.smart_scaling:
 				if self.n_hist_data > 0:
 					pos = state_action[0][0][0] / 2 + 0.5
@@ -439,12 +437,11 @@ class QRAgent(distAgent):
 				if self.n_hist_data > 0:
 					return state_action[0][0][0] / 2 + 0.5,1
 				else:
-					return state_action[0][0] / 2 + 0.5,1
-
-		return 0,1
+					return state_action[0][0] / 2 + 0.5, 1
+		return 0, 1
 
 	# This function needs to be rolled into predict_action
-	def predict_quantiles(self, state_action, target = False):
+	def predict_quantiles(self, state_action, target=False):
 		#state_action = self._process_state_action(state,action_index)
 		result_scaling_mean, result_scaling_range = self._reward_scaling(state_action)
 		if DEBUG:
@@ -459,14 +456,15 @@ class QRAgent(distAgent):
 
 
 	# predict function could be moved to distAgent and transitioned to np
-	def predict(self, state, target = False):
+	def predict(self, state, target=False):
 		res = []
 		for i in range(self.action_size):
-			res.append(self.predict_action(state,i,target = target))
+			res.append(self.predict_action(state, i, target=target))
 
 		res = np.array(res)
-		res.shape = (1,len(res))
+		res.shape = (1, len(res))
 		return res
+
 
 	def project(self, reward, next_state, done, horizon, mem_index):
 		tree_success = False
@@ -476,16 +474,16 @@ class QRAgent(distAgent):
 			if horizon > 1 and mem_index < (self.memory.size - 1):
 				state1, action1, reward1, next_state1, done1 = self.memory[mem_index + 1]
 				if next_action_index == action1:
-					predict = self.project(reward1,next_state1,done1,horizon - 1,mem_index + 1)
+					predict = self.project(reward1, next_state1,done1,horizon - 1, mem_index + 1)
 					tree_success = True
 			if not tree_success:
-				next_state_action = self._process_state_action(next_state,next_action_index)
-				predict = self.predict_quantiles(next_state_action,target = True)
+				next_state_action = self._process_state_action(next_state, next_action_index)
+				predict = self.predict_quantiles(next_state_action, target=True)
 		else:
 			predict = np.zeros(self.N)
 			predict = np.reshape(predict, [1, self.N])
-
 		return reward + self.gamma * predict
+
 
 	def fit(self, state, action_index, reward, next_state, done,mem_index = -1):
 		state_action = self._process_state_action(state,action_index)
@@ -494,17 +492,13 @@ class QRAgent(distAgent):
 		# For Double Deep
 		#print("predictions",self.predict(next_state,quantiles_selected = quantiles_selected))
 		result_scaling_mean, result_scaling_range = self._reward_scaling(state_action)
-		target = (self.project(reward,next_state,done,self.tree_n,mem_index) - result_scaling_mean) / result_scaling_range
-		
-
-			
+		target = (self.project(reward,next_state,done,self.tree_n,mem_index) - result_scaling_mean) / result_scaling_range	
 		if DEBUG:
 			print("Target", target)
 		#print("target shape",target.shape)
 		target_f = target #np.reshape(target, [1, self.N])
 		#print("predicted", self.predict_quantiles(state,action_index,self.quantiles,target = False),"target",target_f)
 		#print("loss", self.huber_loss_quantile(self.quantiles,1)(target_f,self.predict_quantiles(state,action_index,self.quantiles,target = False)))
-		
 		self.model.fit(state_action, target_f,epochs=1, verbose=0)
 
 
@@ -519,6 +513,7 @@ class QRAgent(distAgent):
 			print(f"WARNING: Variance {res} below 0")
 		return max(res,0)
 
+
 	def variance(self, state):
 		res = []
 		#print("00",np.power(self.predict_action(state,0,above_med = self.optimisticUCB),2))
@@ -526,50 +521,49 @@ class QRAgent(distAgent):
 			res.append(self.action_variance(state,i))
 		return res
 
+
 # Testing the code
 if __name__ == "__main__":
-	myAgent = distAgent(5,"TonyTester",N=5)
-	state = [-0.8,0.8] 
+	myAgent = distAgent(5,"TonyTester", N=5)
+	state = [-0.8, 0.8] 
 	state = np.reshape(state, [1, 2])
-	state1 = [0,0] 
+	state1 = [0, 0] 
 	state1 = np.reshape(state1, [1, 2])
 	next_state = [-1,0.9] 
 	next_state = np.reshape(state, [1, 2])
 	myAgent.epsilon_min = 0.01
 	
-	myAgent = QRAgent(2,[0.1,0.5,1.0],"TonyTester",C=0,n_hist_data = 16)
-	state = [-1,1] 
+	myAgent = QRAgent(2, [0.1, 0.5, 1.0],"TonyTester", C=0, n_hist_data=16)
+	state = [-1, 1] 
 	state = np.reshape(state, [1, 2])
 	myAgent
 	DEBUG = True
 	myAgent.learning_rate = 0.0001
-	state = [-1,1] 
+	state = [-1, 1] 
 	state = np.reshape(state, [1, 2])
-	state1 = [-0.5,0.9] 
+	state1 = [-0.5, 0.9] 
 	state1 = np.reshape(state1, [1, 2])
-	next_state = [-1,1] 
+	next_state = [-1, 1] 
 	next_state = np.reshape(state, [1, 2])
-	print("state ", state,"predict ",myAgent.predict(state) ,"quantiles(",0,") ", myAgent.predict_quantiles(state,0,myAgent.quantiles_selected))
+	print("state ", state,"predict ",myAgent.predict(state) ,"quantiles(",0,") ", myAgent.predict_quantiles(state, 0, myAgent.quantiles_selected))
 	for i in range(200):
-		myAgent.fit(state,0,0.1,next_state,True)
-		myAgent.fit(state,2,-0.2,next_state,True)
-		myAgent.fit(state,0,0.5,next_state,True)
-		myAgent.fit(state1,0,-0.5,next_state,False)
-		myAgent.fit(state1,2,0.5,next_state,False)
-	print("state ", state,"predict ",myAgent.predict(state) ,"quantiles(",0,") ", myAgent.predict_quantiles(state,0,myAgent.quantiles_selected),"quantiles(",2,") ", myAgent.predict_quantiles(state,2,myAgent.quantiles_selected))
-	print("state ", state1,"predict ",myAgent.predict(state1) ,"quantiles(",0,") ", myAgent.predict_quantiles(state1,0,myAgent.quantiles_selected),"quantiles(",2,") ", myAgent.predict_quantiles(state1,2,myAgent.quantiles_selected))
-
-
+		myAgent.fit(state, 0, 0.1, next_state, True)
+		myAgent.fit(state, 2, -0.2, next_state, True)
+		myAgent.fit(state, 0, 0.5, next_state, True)
+		myAgent.fit(state1, 0, -0.5, next_state, False)
+		myAgent.fit(state1, 2, 0.5, next_state, False)
+		
+	print("state: ", state, "predict: ", myAgent.predict(state) , "quantiles(",0,"): ", myAgent.predict_quantiles(state, 0, myAgent.quantiles_selected), "quantiles(",2,"): ", myAgent.predict_quantiles(state, 2, myAgent.quantiles_selected))
+	print("state: ", state1,"predict: ", myAgent.predict(state1), "quantiles(",0,"): ", myAgent.predict_quantiles(state1, 0, myAgent.quantiles_selected), "quantiles(",2,") ", myAgent.predict_quantiles(state1, 2, myAgent.quantiles_selected))
 	if False:
 		#print(bound(Tz(1),0,10))
 		#print("test_pred ", predict_act(state,1))
 		#print(np.vectorize(predict_act,excluded=['state'])(state = state,action = [0,1,2]))
-
 		#old_predict = myAgent.predict(state)
 		#old_probs = myAgent.probs(state,1)
 		#print("target ",projTZ(1.0,next_state,True))
 		DEBUG = False
-		print("state ", state,"predict ",myAgent.predict(state) ,"probs(",1,") ", myAgent.probs(state)[6][0], "probs(",0,")", myAgent.probs(state,0)[0][0])
+		print("state: ", state, "predict: ", myAgent.predict(state), "probs(",1,"): ", myAgent.probs(state)[6][0], "probs(",0,"): ", myAgent.probs(state, 0)[0][0])
 		for i in range(200):
 			myAgent.remember(state, 6, 7, next_state, False)
 			myAgent.remember(state, 5, 10, next_state, False)
@@ -577,25 +571,26 @@ if __name__ == "__main__":
 			myAgent.remember(state, 3, 3, next_state, False)
 			myAgent.remember(state, 2, 0, next_state, False)
 			myAgent.remember(state1, 6, 3, next_state, True)
+			
 		for i in range(200):
 			myAgent.replay(6)
+			
 		print("probs[0] ", myAgent.probs(state)[0][0])
 		#print("predict change ",myAgent.predict(state) - old_predict ,"probs change ", myAgent.probs(state,6) - old_probs)
-		print("state ", state,"predict ",myAgent.predict(state) , "state ", state1,"predict ",myAgent.predict(state1))
+		print("state: ", state, "predict: ", myAgent.predict(state), "state: ", state1, "predict: ", myAgent.predict(state1))
 		#print("state ", state,"predict ",myAgent.predict(state) ,"probs(",1,") ", myAgent.probs(state)[6][0], "probs(",0,")", myAgent.probs(state,0)[0][0])
 	if False:
 		myAgent.epsilon = 0
 		print(myAgent.act(state))
-		print("predict change ",myAgent.predict(state)  ,"probs ")#, probs(state,6))
-
+		print("predict change: ", myAgent.predict(state), "probs ")#, probs(state,6))
 	if False:
-		print("Tz:",myAgent.Tz(state,0.1))
-		print("Next State Value:",myAgent.predict(next_state)[0])
+		print("Tz:", myAgent.Tz(state, 0.1))
+		print("Next State Value:", myAgent.predict(next_state)[0])
 		my_next_action = np.argmax(myAgent.predict(next_state)[0])
 		print("choose action:",my_next_action)
 		print("... and the probs:",myAgent.probs(next_state,my_next_action)[0])
-		print("resulting in projTZ ", myAgent.projTZ_nTree(state,0.1,next_state,False,0,1))
-		myAgent.fit(state,2,0.1,next_state,False)
+		print("resulting in projTZ ", myAgent.projTZ_nTree(state, 0.1, next_state, False, 0, 1))
+		myAgent.fit(state, 2, 0.1, next_state, False)
 
 
 
