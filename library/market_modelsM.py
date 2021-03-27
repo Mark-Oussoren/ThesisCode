@@ -8,7 +8,7 @@ RARE_DEBUG = False
 
 
 class bs_stock:
-	def __init__(self, S0, drift, vol, n_steps=10):
+	def __init__(self, S0, drift, vol, n_steps=10, *args, **kwargs):
 		"""
 		:param S0: initial price of stock, float
 		:param drift: float
@@ -22,22 +22,23 @@ class bs_stock:
 		self.price = self.S0
 
 
-	def reset(self, **kwargs):
+	def reset(self, *args, **kwargs):
 		self.price = self.S0
 
 
-	def generate_price(self, dt, St=None):
+	def generate_price(self, dt, St=None, *args, **kwargs):
 		St = self.price
 		self.price = St * np.exp((self.drift - 0.5 * (self.vol ** 2)) * dt + self.vol * (dt ** 0.5) * gauss(0, 1))
 		return self.price
 
 
 class mean_rev_stock(bs_stock):
-	def __init__(self, S0, drift, vol, reversion, alpha=0, eps=0.05, xi=0.5, LAMBDA=0.5, beta=0.01):
+	def __init__(self, S0, drift, vol, reversion, alpha=0, eps=0.05, xi=0.5, LAMBDA=0.5, beta=0.01, *args, **kwargs):
 		"""
+		WIP: Asking Toby about params here - what are they from, how are they estimated, etc.
 		:param reversion:
 		:param alpha:
-		:param eps: 
+		:param eps:
 		:param xi:
 		:param LAMBDA: Poisson parameter, float
 		:param beta:
@@ -51,7 +52,7 @@ class mean_rev_stock(bs_stock):
 		self.beta = beta
 
 
-	def generate_price(self, dt, St=None):
+	def generate_price(self, dt, St=None, *args, **kwargs):
 		if St is None:
 			St = self.price
 		jump = 0
@@ -69,7 +70,7 @@ class mean_rev_stock(bs_stock):
 
 
 class signal_stock(bs_stock):
-	def __init__(self, S0, vol, gamma, signal_vol):
+	def __init__(self, S0, vol, gamma, signal_vol, *args, **kwargs):
 		"""
 		:param gamma:
 		:param signal_vol:
@@ -79,7 +80,7 @@ class signal_stock(bs_stock):
 		super(signal_stock, self).__init__(S0, vol, 0)
 
 
-	def generate_price(self, dt, St=None):
+	def generate_price(self, dt, St=None, *args, **kwargs):
 		St = self.price
 		# Not sure this implementation works for Mean reverting OU process of signal
 		self.signal = -self.gamma * self.signal * dt + self.signal_vol * (dt ** 0.5) * gauss(0, 1)
@@ -87,26 +88,25 @@ class signal_stock(bs_stock):
 		return self.price
 
 
-	def reset(self, **kwargs):
+	def reset(self, *args, **kwargs):
 		self.price = self.S0
-		self.signal = 0 # Always start with no signal (could improve this)
+		self.signal = 0
 
 
 class real_stock:
-	def __init__(self, data, n_steps=60, data_freq=6, recycle=True, n_train=0):
+	def __init__(self, data, n_steps=60, data_freq=6, recycle=True, n_train=0, *args, **kwargs):
 		"""
 		:param data: stock data, array_like
-		:param n_steps: int
-		:param data_freq:
-		:param recycle:
-		:param n_train:
+		:param n_steps: # of time steps agent can act, int
+		:param data_freq: distance between quotes in seconds, int
+		:param recycle: recycling, boolean*
+		:param n_train: data points to train on, int*
 		"""
 		self.recycle = recycle
 		self.n_steps = n_steps
 		self.data = data
 		self.hist_buffer = self.n_steps
-		self.data_freq = data_freq # in seconds
-		# Partition data into training and testing data
+		self.data_freq = data_freq
 		self.n_train = n_train
 		self.partition_training = (self.n_train > 0)
 		if not self.recycle:
@@ -124,20 +124,20 @@ class real_stock:
 		else:
 			recycling = ""
 		n_data = len(self.data["bid"])
-		return f"Real Stock, using {n_data} data points, {recycling} recycling data points. Sampling over {self.n_steps} steps."
+		return f"Real Stock using {n_data} data points and {recycling} recycling data points over {self.n_steps} trades/steps."
 
 
-	def reset(self, training=True):
+	def reset(self, training=True, *args, **kwargs):
 		if (not training) and self.partition_training:
 			self.data_index = randint(len(self.data['bid']) - self.n_train * self.n_steps,len(self.data['bid']) - self.n_steps - 1)
-			#print(self.data_index,len(self.df_prices) - self.n_steps)
+			print(self.data_index, len(self.df_prices) - self.n_steps)
 		else:
 			if not self.recycle:
 				self.period_index += 1
 				assert self.period_index <= self.final_period, "Dataset finished"
 				self.data_index = self.period_index * self.n_steps * self.hist_buffer
 			else:
-				self.data_index = randint(self.hist_buffer,len(self.data['bid']) - self.n_steps * (1 + self.n_train))
+				self.data_index = randint(self.hist_buffer, len(self.data['bid']) - self.n_steps * (1 + self.n_train))
 		self.in_period_index = 0
 		self.S0 = self.data['bid'].values[self.data_index]
 		self.price = 1
@@ -147,7 +147,7 @@ class real_stock:
 			self.initial_spread = self.data["spread"].values[self.data_index]
 
 
-	def _update_data_index(self, dt):
+	def _update_data_index(self, dt, *args, **kwargs):
 		index_update = dt * self.n_steps
 		assert index_update.is_integer(), "Step size must be an integer unit of time"
 		index_update = int(index_update)
@@ -158,7 +158,7 @@ class real_stock:
 		assert self.in_period_index <= self.n_steps, "Stock price requested outside of period"
 
 
-	def generate_price(self, dt):
+	def generate_price(self, dt, St=None, *args, **kwargs):
 		self._update_data_index(dt)
 		self.price = self.data['bid'].values[self.data_index] / self.S0
 		# WARNING: For now we return a scaled price (scaled by initial price at the start of every episode)
@@ -167,7 +167,7 @@ class real_stock:
 		return self.price
 
 
-	def get_hist(self, n, dt, col):
+	def get_hist(self, n, dt, col, *args, **kwargs):
 		dt_adj = dt * self.n_steps
 		assert dt_adj.is_integer(), "Time step must be an integer"
 		dt_adj = int(dt_adj)
@@ -177,11 +177,11 @@ class real_stock:
 		return np.array(res)
 
 
-	def get_value(self, col):
+	def get_value(self, col, *args, **kwargs):
 		return self._scale(col,self.data_index,True)
 
 
-	def _scale(self, col, index, for_state=False):
+	def _scale(self, col, index, for_state=False, *args, **kwargs):
 		# Allows for columns to be scaled in a unique way
 		if col == "bid" or col == "ask":
 			if for_state:
@@ -205,14 +205,14 @@ class real_stock:
 
 
 class real_stock_lob(real_stock):
-	def __init__(self, data, n_steps=60, data_freq=6, recycle=True, n_train=100):
+	def __init__(self, data, n_steps=60, data_freq=6, recycle=True, n_train=100, *args, **kwargs):
 		assert set(data.columns).issubset({"bid", "bidSize", "ask", "askSize", "buyMO", "sellMO", "buySellImb", "orderImb", "spread"}), \
 			f'input columns {self.data.columns} must be a subset of ("bid", "bidSize", "ask", "askSize", "buyMO", "sellMO", "buySellImb", "orderImb")'
 		super(real_stock_lob,self).__init__(data, n_steps, data_freq, recycle, n_train)
 		print("WARNING: Several market data inputs have been forced to 0 temporarily")
 
 
-	def reset(self, training=True):
+	def reset(self, training=True, *args, **kwargs):
 		super(real_stock_lob,self).reset(training)
 		# Override the initial price with the mid price
 		self.S0 = (self.data["bid"][self.data_index] + self.data["ask"][self.data_index]) / 2
@@ -220,7 +220,7 @@ class real_stock_lob(real_stock):
 		self.generate_price(first = True)
 
 
-	def generate_price(self, dt=None, first=False):
+	def generate_price(self, dt=None, first=False, St=None, *args, **kwargs):
 		if not first:
 			assert dt is not None, "dt argument required for non initial price"
 			self._update_data_index(dt)
