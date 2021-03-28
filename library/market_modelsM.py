@@ -105,13 +105,12 @@ class real_stock:
 		self.recycle = recycle
 		self.n_steps = n_steps
 		self.data = data
-		self.hist_buffer = self.n_steps
 		self.data_freq = data_freq
 		self.n_train = n_train
 		self.partition_training = (self.n_train > 0)
 		if not self.recycle:
 			print("Assuming 1-min frequency without recycling")
-			self.final_period = floor((len(data) - self.hist_buffer) / self.n_steps) - self.n_train
+			self.final_period = floor(len(data) / self.n_steps - 1) - self.n_train
 			self.available_periods = range(self.final_period)
 			shuffle(self.available_periods)
 		self.period_index = -1
@@ -129,15 +128,15 @@ class real_stock:
 
 	def reset(self, training=True, *args, **kwargs):
 		if (not training) and self.partition_training:
-			self.data_index = randint(len(self.data['bid']) - self.n_train * self.n_steps,len(self.data['bid']) - self.n_steps - 1)
+			self.data_index = randint(len(self.data['bid']) - self.n_train * self.n_steps, len(self.data['bid']) - self.n_steps - 1)
 			print(self.data_index, len(self.df_prices) - self.n_steps)
 		else:
 			if not self.recycle:
 				self.period_index += 1
 				assert self.period_index <= self.final_period, "Dataset finished"
-				self.data_index = self.period_index * self.n_steps * self.hist_buffer
+				self.data_index = self.period_index * self.n_steps ** 2
 			else:
-				self.data_index = randint(self.hist_buffer, len(self.data['bid']) - self.n_steps * (1 + self.n_train))
+				self.data_index = randint(self.n_steps, len(self.data['bid']) - self.n_steps * (1 + self.n_train))
 		self.in_period_index = 0
 		self.S0 = self.data['bid'].values[self.data_index]
 		self.price = 1
@@ -269,7 +268,6 @@ class market:
 		self.k = 0.0000000186 # I've scaled these to represent the fact that the position is now 100000 not 10
 		self.b = 0.000000005
 		self.stock = stock_
-		self.stock.hist_buffer = n_hist_prices
 		self.spread = 0
 		self.price_adjust = 1
 		self.n_hist_prices = n_hist_prices
