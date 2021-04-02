@@ -1,16 +1,15 @@
-import numpy as np
-import tensorflow as tf
-import tensorflow.keras.backend as K
-import random
-import copy
-from tensorflow.keras.models import Sequential
-from tensorflow.keras.models import clone_model
-from tensorflow.keras.layers import Dense, Softmax, Dot, Add, Input, Lambda, Layer, concatenate, Dropout, Reshape, Flatten
-from tensorflow.keras.initializers import RandomNormal
-from tensorflow.keras import Model
-from tensorflow.keras.optimizers import Adam
 from collections import deque
+import copy
+import numpy as np
 from os import path
+import random
+import tensorflow as tf
+from tensorflow.keras import Model
+import tensorflow.keras.backend as K
+from tensorflow.keras.initializers import RandomNormal
+from tensorflow.keras.layers import Dense, Softmax, Dot, Add, Input, Lambda, Layer, concatenate, Dropout, Reshape, Flatten
+from tensorflow.keras.models import Sequential, clone_model
+from tensorflow.keras.optimizers import Adam
 
 
 if __name__ == "__main__":
@@ -70,8 +69,7 @@ class distAgent(learningAgent):
 
 
 	def act(self, state):
-		# No eps greedy required for 'UCB' type update
-		# Predict return
+		# epsilon greedy not required for 'UCB' type update
 		act_values = self.predict(state)
 		if self.evaluate:
 			return np.argmax(act_values[0])
@@ -81,9 +79,7 @@ class distAgent(learningAgent):
 			else:
 				self.ct = self.c * np.sqrt(np.log(self.t) / self.t)
 				act = np.argmax(act_values[0] + self.ct * np.sqrt(self.variance(state)))
-				#print("Act",act)
 			return act
-		# random action
 		if np.random.rand() <= self.epsilon:
 			rand_act = random.randrange(self.action_size)
 			return rand_act#random.randrange(self.action_size)
@@ -91,16 +87,16 @@ class distAgent(learningAgent):
 
 
 	def _process_state_action(self, state, action_index):
+		# res is shorthand for result, which is meaningless, 
+		# I will change this to just new_state or processed_state probably
 		res = copy.deepcopy(state)
 		if self.action_space_size == 1:
-			# Single action input
 			action = self.action_values[action_index] * self.trans_a + self.trans_b
 		else:
-			# Multiple action inputs
 			action = np.array(self.action_values[action_index]) * self.trans_a + self.trans_b
 		if self.n_hist_data > 0:
 			# Two state inputs
-			print(self.action_space_size)
+			print(action)
 			print(np.concatenate((np.array(state[0][0]), action), axis=None))
 			res[0] = np.reshape(np.concatenate((np.array(state[0][0]), action), axis=None), [1, len(state[0][0]) + self.action_space_size])
 		else:
@@ -136,7 +132,7 @@ class C51Agent(distAgent):
 	def probs(self, state, action_index, target=False):
 		state_action = self._process_state_action(state, action_index)
 		if DEBUG:
-			#print("probs of ",state_action,"are",self.model.predict(state_action))
+			print("Probability of ", state_action, "is", self.model.predict(state_action))
 			pass
 		if target and self.C>0:
 			res = self.target_model.predict(state_action)
@@ -159,6 +155,7 @@ class C51Agent(distAgent):
 
 
 	def vpredict(self, state, action_indices, target=False):
+		print(np.vectorize(self.predict_act, excluded=['state'])(state=state, action_index=action_indices, target=target))
 		return np.vectorize(self.predict_act, excluded=['state'])(state=state, action_index=action_indices, target=target)
 
 
