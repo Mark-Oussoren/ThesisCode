@@ -87,22 +87,28 @@ class distAgent(learningAgent):
 
 
 	def _process_state_action(self, state, action_index):
-		# res is shorthand for result, which is meaningless, 
-		# I will change this to just new_state or processed_state probably
-		res = copy.deepcopy(state)
+		new_state = copy.deepcopy(state)
+		# self.action_space_size is not defined - so it's throwing an error
+		action = self.action_values[action_index] * self.trans_a + self.trans_b
+		"""
 		if self.action_space_size == 1:
 			action = self.action_values[action_index] * self.trans_a + self.trans_b
 		else:
+			print(f'asdf: {self.action_values}')
 			action = np.array(self.action_values[action_index]) * self.trans_a + self.trans_b
+		"""
+		new_state = np.reshape(np.concatenate((np.array(state[0]), action), axis=None), [1, len(state[0]) + self.action_space_size])
+		"""
 		if self.n_hist_data > 0:
 			# Two state inputs
 			print(action)
 			print(np.concatenate((np.array(state[0][0]), action), axis=None))
-			res[0] = np.reshape(np.concatenate((np.array(state[0][0]), action), axis=None), [1, len(state[0][0]) + self.action_space_size])
+			new_state[0] = np.reshape(np.concatenate((np.array(state[0][0]), action), axis=None), [1, len(state[0][0]) + self.action_space_size])
 		else:
 			# One state input
-			res = np.reshape(np.concatenate((np.array(state[0]), action), axis=None), [1, len(state[0]) + self.action_space_size])
-		return res
+			new_state = np.reshape(np.concatenate((np.array(state[0]), action), axis=None), [1, len(state[0]) + self.action_space_size])
+		"""
+		return new_state
 
 
 	# 'Virtual' Function
