@@ -52,6 +52,10 @@ class mean_rev_stock(bs_stock):
 		self.beta = beta
 
 
+	def reset(self, *args, **kwargs):
+		self.price = self.S0
+
+
 	def generate_price(self, dt, St=None, *args, **kwargs):
 		if St is None:
 			St = self.price
@@ -80,17 +84,17 @@ class signal_stock(bs_stock):
 		super(signal_stock, self).__init__(S0, vol, 0)
 
 
+	def reset(self, *args, **kwargs):
+		self.price = self.S0
+		self.signal = 0
+
+
 	def generate_price(self, dt, St=None, *args, **kwargs):
 		St = self.price
 		# Not sure this implementation works for Mean reverting OU process of signal
 		self.signal = -self.gamma * self.signal * dt + self.signal_vol * (dt ** 0.5) * gauss(0, 1)
 		self.price = St * np.exp((self.signal - 0.5 * (self.vol ** 2)) * dt + self.vol * (dt ** 0.5) * gauss(0, 1))
 		return self.price
-
-
-	def reset(self, *args, **kwargs):
-		self.price = self.S0
-		self.signal = 0
 
 
 class real_stock:
@@ -107,7 +111,6 @@ class real_stock:
 		self.data = data
 		self.data_freq = data_freq
 		self.n_train = n_train
-		self.partition_training = (self.n_train > 0)
 		if not self.recycle:
 			print("Assuming 1-min frequency without recycling")
 			self.final_period = floor(len(data) / self.n_steps - 1) - self.n_train
@@ -127,9 +130,8 @@ class real_stock:
 
 
 	def reset(self, training=True, *args, **kwargs):
-		if (not training) and self.partition_training:
+		if (not training) and (self.n_train > 0):
 			self.data_index = randint(len(self.data['bid']) - self.n_train * self.n_steps, len(self.data['bid']) - self.n_steps - 1)
-			print(self.data_index, len(self.df_prices) - self.n_steps)
 		else:
 			if not self.recycle:
 				self.period_index += 1
@@ -157,7 +159,7 @@ class real_stock:
 		assert self.in_period_index <= self.n_steps, "Stock price requested outside of period"
 
 
-	def generate_price(self, dt, St=None, *args, **kwargs):
+	def generate_price(self, dt, *args, **kwargs):
 		self._update_data_index(dt)
 		self.price = self.data['bid'].values[self.data_index] / self.S0
 		# WARNING: For now we return a scaled price (scaled by initial price at the start of every episode)
@@ -172,7 +174,7 @@ class real_stock:
 		dt_adj = int(dt_adj)
 		res = []
 		for i in range(n):
-			res.append(self._scale(col,self.data_index + (- n + i + 1 ) * dt_adj,for_state=True))
+			res.append(self._scale(col,self.data_index + (- n + i + 1 ) * dt_adj, for_state=True))
 		return np.array(res)
 
 
@@ -208,7 +210,6 @@ class real_stock_lob(real_stock):
 		assert set(data.columns).issubset({"bid", "bidSize", "ask", "askSize", "buyMO", "sellMO", "buySellImb", "orderImb", "spread"}), \
 			f'input columns {self.data.columns} must be a subset of ("bid", "bidSize", "ask", "askSize", "buyMO", "sellMO", "buySellImb", "orderImb")'
 		super(real_stock_lob,self).__init__(data, n_steps, data_freq, recycle, n_train)
-		print("WARNING: Several market data inputs have been forced to 0 temporarily")
 
 
 	def reset(self, training=True, *args, **kwargs):
@@ -228,8 +229,8 @@ class real_stock_lob(real_stock):
 		error = np.isnan(self.price)
 		assert not error, "Price must be a finite real number"
 		# Extract and rescale core data
-		self.bid = self._scale("bid",self.data_index)
-		self.ask = self._scale("ask",self.data_index)
+		self.bid = self._scale("bid", self.data_index)
+		self.ask = self._scale("ask", self.data_index)
 		# TODO: how do we scale these?
 		self.bidSize = self._scale("bidSize",self.data_index)
 		self.askSize = self._scale("askSize",self.data_index)
