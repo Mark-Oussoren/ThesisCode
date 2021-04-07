@@ -15,6 +15,14 @@ if local:
 
 class simulator:
 	def __init__(self, market_, agent, params=None, test_name=None, orderbook=False):
+		"""
+		Market Simulation
+		:param market_:
+		:param agent:
+		:param params: 
+		:param test_name:
+		:param orderbook:
+		"""
 		if params is None:
 			params = {"num_trades" : 50,
 					  "position" : 10,
@@ -25,21 +33,21 @@ class simulator:
 		self.batch_size = params["batch_size"]
 		self.agent = agent
 		self.orderbook = orderbook
-		self.m = market_
+		self.market = market_
 		self.possible_actions = params["action_values"]
 		if orderbook:
-			self.env = orderbook_environment(self.m,
+			self.env = orderbook_environment(self.market,
 								 params["position"],
 								 params["num_trades"],
 								 self.possible_actions
 								)
 		else:
-			self.env = agent_environment(self.m,
+			self.env = agent_environment(self.market,
 								 params["position"],
 								 params["num_trades"],
 								 self.possible_actions
 								)
-		self.trade_freq = self.m.stock.n_steps / self.num_steps
+		self.trade_freq = self.market.stock.n_steps / self.num_steps
 		# TAG: Depreciate?
 		self.intensive_training = False
 		self.test_name = test_name
@@ -58,13 +66,13 @@ class simulator:
 		 "batch_size": self.batch_size,
 		 "action_size": len(self.possible_actions),
 		 "state_size": self.env.state_size,
-		 "temp_impact": self.env.m.k,
-		 "perm_impact": self.env.m.b,
-		 "stock": type(self.env.m.stock).__name__,
+		 "temp_impact": self.env.market.k,
+		 "perm_impact": self.env.market.b,
+		 "stock": type(self.env.market.stock).__name__,
 		 "orderbook": orderbook
 		 })
-		if type(self.env.m.stock).__name__ == "bs_stock":
-			self.new_run.config.update({"stock_vol": self.env.m.stock.vol})
+		if type(self.env.market.stock).__name__ == "bs_stock":
+			self.new_run.config.update({"stock_vol": self.env.market.stock.vol})
 		if self.agent.agent_type != "basic":
 			self.new_run.config.update({"target_lag": self.agent.C,
 			 "alt_target": self.agent.alternative_target,
@@ -98,7 +106,7 @@ class simulator:
 
 
 	def __str__(self):
-		return f"{type(agent).__name__} exiting position {self.env.initial_position} over period of {self.m.stock.n_steps} seconds, changing trading rate every {self.trade_freq} seconds."
+		return f"{type(agent).__name__} exiting position {self.env.initial_position} over period of {self.market.stock.n_steps} seconds, changing trading rate every {self.trade_freq} seconds."
 
 
 	@staticmethod
@@ -187,7 +195,6 @@ class simulator:
 		plt.plot(np.arange(self.num_steps), np.array(total_position) / (n_episodes * self.env.initial_position))
 		plt.ylabel("Percentage of Position")
 		plt.show()
-		#print(np.arange(self.num_steps) / self.num_steps,np.array(total_position) / n_episodes)
 		self.new_run.log({'episode': self.episode_n, 'position': wandb.Image(plt)})
 		for j in range(len(total_position)):
 			self.new_run.log({'episode': self.episode_n, ('position' + str(j)): total_position[j] / n_episodes})
@@ -219,13 +226,11 @@ class simulator:
 			assert set(record).issubset(self.logging_options), "Undefined recording parameters"
 		state = self.env.reset(training = (not evaluate)) # reset state at start of each new episode of the game
 		# TAG: Depreciate
-		#track_action_p = False
 		track = {}
 		if recording:
 			# Log action values at t=0
 			if "value" in record:
 				for j in range(0, 3):
-					#print("state (sim)",state)
 					predicts = self.agent.predict(state)[0]
 					print(j)
 					self.new_run.log({'episode': self.episode_n, ('act_val' + str(j)): predicts[j]})
@@ -270,14 +275,15 @@ class simulator:
 			if self.intensive_training:
 				for i, agent in enumerate(self.agents):
 					if len(agent.memory) > self.batch_size and not evaluate:
-						agent.replay(self.batch_size) # train the agent by replaying the experiences of the episode
-						agent.step() # Update target network if required
+						# train the agent by replaying the experiences of the episode & update target network
+						agent.replay(self.batch_size) 
+						agent.step() 
 
 		if not done:
 			print(state)
 			print("We have a problem.")
 		if recording and "lo" in record:
-			track["lo"] = self.env.m.lo_value
+			track["lo"] = self.env.market.lo_value
 		return track
 
 
@@ -307,10 +313,11 @@ class simulator:
 
 	def show_dist(self, dist_agent, data, figure=1, actions=[5, 6]):
 		plt.figure(figure)
-		for a in actions:
-			plt.bar(dist_agent.z, data[a][0], alpha=0.4, width=0.25, label=f"action {bar_act}")
+		for action in actions:
+			plt.bar(dist_agent.z, data[action][0], alpha=0.4, width=0.25, label=f"action {bar_act}")
 
 		plt.legend()
+		plt.show()
 
 
 	def execute(self, agent):
